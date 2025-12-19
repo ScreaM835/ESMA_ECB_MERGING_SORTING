@@ -95,7 +95,7 @@ The ESMA template Excel file provides the mapping between ECB and ESMA column na
 | `AR1` | `RREL6` | Data Cut-Off Date |
 | `AR2` | `RREL3` | Loan Identifier |
 | `AR128` | `RREC6` | Geographic Region (NUTS) |
-| ... | ... | (136 total mappings) |
+| ... | ... | (72 ECB→ESMA mappings) |
 
 ### Pool Categories
 
@@ -321,7 +321,7 @@ WHERE prev_rrel3 IS NOT NULL
 ### Background
 One file was originally labeled `UNKNOWN.csv` because country detection failed. Investigation revealed:
 
-- **205,991 rows**, **29,493 unique loans**, **1 pool**
+- **205,991 rows**, **1 pool**
 - Pool ID: `213800WQJJDCAN4BCO57N202001`
 - All data from ESMA source
 - `RREC6` contains Portuguese NUTS codes (`PT118`, `PT171`, etc.)
@@ -336,7 +336,6 @@ This file uses a **different/older ESMA template**:
 Renamed to `PT_LEGACY.csv` to indicate:
 1. It's Portuguese data
 2. It uses a legacy schema incompatible with main PT.csv
-3. 395 loans overlap with PT.csv (can be cross-referenced)
 
 ---
 
