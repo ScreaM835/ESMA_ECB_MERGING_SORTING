@@ -429,25 +429,6 @@ Each notebook is **resume-safe** and can be re-run after interruption.
 
 ---
 
-## Data Statistics
-
-| Country | Approximate Size | Notes |
-|---------|-----------------|-------|
-| IT | ~100+ GB | Largest country |
-| FR | ~80+ GB | |
-| ES | ~50+ GB | |
-| DE | ~30+ GB | |
-| NL | ~25+ GB | |
-| UK | ~15+ GB | |
-| IE | ~10+ GB | |
-| BE | ~8+ GB | |
-| PT | ~0.8 GB | |
-| PT_LEGACY | ~0.2 GB | Legacy schema |
-
-**Total: ~328 GB** across 10 output files
-
----
-
 ## License
 
 This pipeline is for processing publicly available regulatory data from ECB and ESMA securitization disclosures.
