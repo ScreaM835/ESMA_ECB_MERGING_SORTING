@@ -97,6 +97,10 @@ The ESMA template Excel file provides the mapping between ECB and ESMA column na
 | `AR128` | `RREC6` | Geographic Region (NUTS) |
 | ... | ... | (72 ECB→ESMA mappings) |
 
+The mapping is loaded from the Excel template with columns:
+- `FIELD CODE` → ESMA column name
+- `For info: existing ECB or EBA NPL template field code` → ECB column name
+
 ### Pool Categories
 
 The `pool_mapping.json` file categorizes pools into three types:
@@ -104,6 +108,21 @@ The `pool_mapping.json` file categorizes pools into three types:
 1. **Matched Pools**: ECB pool has a corresponding ESMA pool
 2. **ECB-Only Pools**: Only ECB data exists
 3. **ESMA-Only Pools**: Only ESMA data exists
+
+### ECB Data Preparation (`prepare_ecb_data()`)
+
+When loading ECB data, the following transformations are applied:
+
+1. **Column Renaming**: ECB columns are renamed to ESMA equivalents using the template mapping
+2. **Source Marker**: A `source='ECB'` column is added to track data origin
+3. **Date Normalization**: `RREL6` (or `AR1` if RREL6 missing) is truncated to `YYYY-MM` format into `date_ym` column for deduplication
+
+### ESMA Data Preparation (`prepare_esma_data()`)
+
+ESMA data requires minimal transformation:
+
+1. **Source Marker**: A `source='ESMA'` column is added
+2. **Date Normalization**: `RREL6` truncated to `YYYY-MM` format into `date_ym` column
 
 ### Deduplication Logic
 
@@ -115,11 +134,18 @@ The `pool_mapping.json` file categorizes pools into three types:
 | `RMBMFR000083100220149` | 2021-05 to 2021-08 | 4 |
 | `RMBMNL000185100120109` | 2024-06 | 1 |
 
-For these pools only, deduplication is performed:
-- **Strategy**: Prefer ESMA over ECB when same loan+date exists
-- **Key**: `(RREL3 loan_id, date_ym)` where `date_ym` = `RREL6[:7]` (YYYY-MM)
+For these pools only, deduplication is performed via `remove_duplicates_prefer_esma()`:
 
-For all other matched pools, data is simply concatenated (no dedup needed).
+```python
+# Algorithm:
+# 1. Build set of (loan_id, date_ym) pairs from ESMA rows
+# 2. For each row:
+#    - If source='ESMA': keep
+#    - If source='ECB' and (loan_id, date_ym) NOT in ESMA set: keep
+#    - If source='ECB' and (loan_id, date_ym) IN ESMA set: drop
+```
+
+For all other matched pools, data is simply concatenated (no dedup needed) - this is a significant performance optimization.
 
 ### Process
 
@@ -186,24 +212,63 @@ The pipeline detects country using this priority order (first valid value wins):
 | 7 | Pool ID | Fallback: `RMBM{CC}...` or `RMBS{CC}...` | `RMBMIT...` → `IT` |
 | 8 | — | Default | `UNKNOWN` |
 
-### Process
+### Process Overview
 
-1. **Scan All Files**: Index all CSV files, detect country for each using sample read
-2. **Build Country Index**: Group files by detected country
-3. **Unified Column Schema**: Scan all files for a country to determine full column set
-4. **Stream-Merge**: Process each file in chunks (100,000 rows default), append to output
+1. **Scan All Files**: Index all CSV files from matched, ecb_only, esma_only folders
+2. **Detect Country**: Sample first 100 rows of each file to determine country
+3. **Build Country Index**: Group files by detected country
+4. **Phase 1 - Union of Columns**: Scan headers of ALL files for a country to determine full column set
+5. **Phase 2 - Stream-Merge**: Process each file in chunks, append to output
 
-### Chunked I/O Strategy
+### Unified Column Schema (Union of Columns)
+
+**Critical Algorithm**: Different pools have different columns. To merge into one file:
+
+```python
+# Phase 1: Build unified column schema
+all_columns = set()
+
+for file in country_files:
+    df_header = pd.read_csv(file, nrows=0)  # Read ONLY header row
+    all_columns.update(df_header.columns.tolist())
+
+# Sort for consistent ordering across runs
+all_columns_sorted = sorted(list(all_columns))
 ```
-For each country:
-  1. Scan all files -> unified column list
-  2. For each file:
-     - Read in 100k row chunks
-     - Add missing columns as NaN
-     - Reorder to unified schema
-     - Append to .tmp file
-  3. Rename .tmp -> final
+
+This ensures:
+- Every column from ANY file is included in the output
+- Column order is deterministic (alphabetically sorted)
+- Files with different schemas can be merged together
+
+### Chunked I/O Strategy (Stream-Merge)
+
+**Memory-Efficient Processing**: Files are processed in 100,000-row chunks:
+
+```python
+# Phase 2: Stream-merge all files
+for file in country_files:
+    for chunk in pd.read_csv(file, chunksize=100000, low_memory=False):
+        # Add missing columns with NaN
+        for col in all_columns_sorted:
+            if col not in chunk.columns:
+                chunk[col] = np.nan
+        
+        # Reorder to unified schema
+        chunk = chunk[all_columns_sorted]
+        
+        # Append to temp file (header only on first chunk)
+        chunk.to_csv(temp_path, mode='a', index=False, header=first_chunk)
+        first_chunk = False
+        
+        del chunk  # Free memory immediately
 ```
+
+**Why This Works**:
+- Never loads entire file into memory
+- Handles files of any size (tested on 100+ GB)
+- Maintains consistent column order across all rows
+- Uses `.tmp` file for atomic writes (rename on completion)
 
 ### Output
 - **Location:** `D:\ECB_ESMA_BY_COUNTRY_ALL\`
