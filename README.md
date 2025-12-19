@@ -34,9 +34,17 @@ Merge ESMA Underlying Exposures (UE) files with their corresponding Collateral f
 ### Process
 
 1. **Parse Filenames**: Extract asset type, category (UE/Collateral), pool identifier, date, and sequence number using regex pattern:
-   ```
+   ```regex
    ^1_(\w+)_(UE|Collateral)_(.+)_(\d{4}-\d{2}-\d{2})_(\d+)\.csv$
    ```
+   
+   | Group | Captures |
+   |-------|----------|
+   | `\1` | Asset type (RMB, CMR, NPE, etc.) |
+   | `\2` | Category (UE or Collateral) |
+   | `\3` | Pool identifier (LEI + vintage) |
+   | `\4` | Date (YYYY-MM-DD) |
+   | `\5` | Sequence number |
 
 2. **Match File Pairs**: Create lookup by `(asset_type, identifier, date)` to find UE-Collateral pairs.
 
